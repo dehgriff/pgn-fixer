@@ -104,9 +104,7 @@
 
       pgnError = false;
       for (let i = numPly - 1; i >= 0; i--) {
-        //console.log(i);
         tpgn = getPgn(moves, i);
-        //console.log(tpgn);
         if (game.load_pgn(tpgn)) {
           lastOk = i;
           console.log("OK", i, moves[i]);
@@ -215,10 +213,8 @@
       moves = [];
       pgn = $pgnIn.val();
       pgn = pgn.replace(/\{.+?\}/gm, '');
-      console.log(pgn);
       header = pgn.match(/\[.+\]/s);
       header = header[0].replace(/^ +/gm, '');
-      console.log(header);
 
       let rx = new RegExp(/\d+\.\s+(\S+)\s*(\S+)?/g);
 
@@ -226,7 +222,6 @@
         moves.push(match[1]);
         moves.push(match[2]);
       }
-      console.log(moves);
 
       numPly = moves[moves.length - 1] === undefined ? moves.length - 1 : moves.length; // remove undef ply at end
 

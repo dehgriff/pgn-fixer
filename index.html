@@ -1,0 +1,240 @@
+<!doctype html>
+<html>
+
+<head>
+  <meta charset="utf-8" />
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1" />
+  <title>PGN Fixer</title>
+  <base href="../" />
+  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css"
+        integrity="sha384-q94+BZtLrkL1/ohfjR8c6L+A6qzNH9R2hBLwyoAfu3i/WCvQjzL2RQJ3uNHDISdU" crossorigin="anonymous">
+</head>
+
+<body>
+  <style>
+    label {
+      font-weight: bold;
+    }
+
+    .column {
+      float: left;
+      padding-right: 50px;
+      max-width: 500px;
+      /*width: 50%;*/
+    }
+
+    /* Clear floats after the columns */
+    .row:after {
+      content: "";
+      display: table;
+      clear: both;
+    }
+  </style>
+  <!--- Begin HTML ------------------------------------------------------>
+  <div class="row">
+    <div class="column">
+      <div id="myBoard" style="width: 400px"></div>
+      <button onclick="loadPgn()">Load PGN</button>
+    </div>
+    <div class="column">
+      <h1>PGN Fixer</h1>
+      <p>This is a tool that can be used for fixing PGNs where some moves are incorrect - e.g.
+        because they are ambiguous Knight or Rook moves.
+      </p>
+      <p>Paste your PGN into the Orignal PGN box and hit Load PGN. When erroneous moves are found
+        the tool will wait for you to play the correct move, then continue.
+      </p>
+      <p>Current limitations: PGN must contain no comments or variations.
+      </p>
+      <label>Erroneous/Ambiguous Move:</label>
+      <div id="ambiguous"></div>
+      <p></p>
+      <label>Valid Moves in this Position:</label>
+      <div id="valid"></div>
+      <p></p>
+      <label>Game Status:</label>
+      <div id="status"></div>
+    </div>
+  </div>
+  <p></p>
+  <div class="row">
+    <div class="column">
+      <label>Original PGN:</label><br>
+      <textarea id="pgnIn" rows="24" cols="50"></textarea>
+    </div>
+    <div class="column">
+      <label>Fixed PGN:</label><br>
+      <textarea id="pgn" rows="24" cols="50"></textarea>
+    </div>
+  </div>
+  <!--- End HTML -------------------------------------------------------->
+
+  <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.4.1/jquery.min.js"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"
+          integrity="sha384-8Vi8VHwn3vjQ9eUHUxex3JSN/NFqUg3QbPyX8kWyb93+8AC/pPWTzj+nHtbC5bxD"
+          crossorigin="anonymous"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/chess.js/0.10.2/chess.js"
+          integrity="sha384-s3XgLpvmHyscVpijnseAmye819Ee3yaGa8NxstkJVyA6nuDFjt59u1QvuEl/mecz"
+          crossorigin="anonymous"></script>
+  <script>
+
+    let $ambiguous = $('#ambiguous');
+    let $valid = $('#valid');
+    let $status = $('#status');
+    let $pgnIn = $('textarea#pgnIn');
+    let $pgnOut = $('textarea#pgn');
+    let lastMove = "";
+    let pgnError = false;
+    const game = new Chess();
+    let pgn = "";
+    let header = "";
+    let numPly = 0;
+    let tpgn = "";
+    let lastOk = 0;
+    let moves = [];
+
+    var config = {
+      draggable: true,
+      onDragStart: onDragStart,
+      onDrop: onDrop,
+      onSnapEnd: onSnapEnd
+    }
+    board = Chessboard('myBoard', config)
+
+    function tryLoadPgn() {
+
+      pgnError = false;
+      for (let i = numPly - 1; i >= 0; i--) {
+        //console.log(i);
+        tpgn = getPgn(moves, i);
+        //console.log(tpgn);
+        if (game.load_pgn(tpgn)) {
+          lastOk = i;
+          console.log("OK", i, moves[i]);
+          break;
+        } else {
+          pgnError = true;
+        }
+      }
+
+      updateStatus();
+
+      console.log(tpgn);
+
+      console.log(game.ascii());
+      console.log(game.moves());
+
+      board.position(game.fen());
+    }
+
+    function getPgn(moves, to) {
+      let pgn = "";
+      for (i = 0; i <= to; i++) {
+        if (i % 2 == 0) {
+          pgn += " " + (1 + i/2) + ".";
+        }
+        pgn += " " + moves[i];
+      }
+      return pgn;
+    }
+
+    function onDragStart(source, piece, position, orientation) {
+      // do not pick up pieces if the game is over
+      if (game.game_over()) return false
+
+      // only pick up pieces for the side to move
+      if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
+        (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
+        return false
+      }
+    }
+
+    function onDrop(source, target) {
+      // see if the move is legal
+      var move = game.move({
+        from: source,
+        to: target,
+        promotion: 'q' // NOTE: always promote to a queen for example simplicity
+      })
+
+      // illegal move
+      if (move === null) return 'snapback'
+
+      lastMove = move.san;
+      if (pgnError) {
+        moves[lastOk + 1] = lastMove;
+        updateStatus();
+        setTimeout(tryLoadPgn, 500);
+      } else {
+        updateStatus();
+      }
+    }
+
+    // update the board position after the piece snap
+    // for castling, en passant, pawn promotion
+    function onSnapEnd() {
+      board.position(game.fen())
+    }
+
+    function updateStatus() {
+      var status = ''
+
+      var moveColor = 'White'
+      if (game.turn() === 'b') {
+        moveColor = 'Black'
+      }
+
+      // checkmate?
+      if (game.in_checkmate()) {
+        status = 'Game over, ' + moveColor + ' is in checkmate.'
+      }
+
+      // draw?
+      else if (game.in_draw()) {
+        status = 'Game over, drawn position'
+      }
+
+      // game still on
+      else {
+        status = moveColor + ' to move'
+
+        // check?
+        if (game.in_check()) {
+          status += ', ' + moveColor + ' is in check'
+        }
+      }
+
+      $status.html(status)
+      $ambiguous.html(pgnError ? moves[lastOk + 1] : "None");
+      $valid.html(game.moves().length > 0 ? game.moves().join(" ") : "None");
+      $pgnIn.html(pgn);
+      $pgnOut.html(header + '\n' + game.pgn());
+    }
+
+    function loadPgn() {
+      pgnError = false;
+      moves = [];
+      pgn = $pgnIn.val();
+      pgn = pgn.replace(/\{.+?\}/gm, '');
+      console.log(pgn);
+      header = pgn.match(/\[.+\]/s);
+      header = header[0].replace(/^ +/gm, '');
+      console.log(header);
+
+      let rx = new RegExp(/\d+\.\s+(\S+)\s*(\S+)?/g);
+
+      while( (match = rx.exec(pgn)) != null ) {
+        moves.push(match[1]);
+        moves.push(match[2]);
+      }
+      console.log(moves);
+
+      numPly = moves[moves.length - 1] === undefined ? moves.length - 1 : moves.length; // remove undef ply at end
+
+      tryLoadPgn();
+    }
+
+  </script>
+</body>
+
+</html>
